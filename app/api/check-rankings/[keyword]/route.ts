@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase/server'
 import { checkRankings, saveRankingsToDatabase } from '@/lib/rankings'
 
 export async function GET(
@@ -7,6 +7,17 @@ export async function GET(
   { params }: { params: Promise<{ keyword: string }> }
 ) {
   try {
+    const supabase = await createClient()
+    
+    // Check authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json(
+        { data: null, error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
     const { keyword: keywordParam } = await params
     const keyword = decodeURIComponent(keywordParam)
 
@@ -64,6 +75,17 @@ export async function POST(
       )
     }
 
+    const supabase = await createClient()
+    
+    // Check authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json(
+        { data: null, error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
     // Find keyword in database
     const { data: keywordData, error: keywordError } = await supabase
       .from('keywords')
@@ -81,8 +103,8 @@ export async function POST(
     // Check rankings (this calls external APIs - slow)
     const redditPosts = await checkRankings(keyword)
 
-    // Save rankings to database
-    await saveRankingsToDatabase(keywordData.id, keyword, redditPosts)
+    // Save rankings to database (need to pass supabase client for RLS)
+    await saveRankingsToDatabase(keywordData.id, keyword, redditPosts, supabase)
 
     // Fetch updated posts
     const { data: posts, error: postsError } = await supabase

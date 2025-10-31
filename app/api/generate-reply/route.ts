@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase/server'
 import { ReplyStyle, REPLY_STYLES } from '@/lib/types'
 import { replaceTemplateVariables, buildTemplateVariables } from '@/lib/template'
 
@@ -55,7 +55,7 @@ async function scrapeReddit(postUrl: string, includeComments: boolean) {
   return { data: item as ApifyScrapedItem, error: null }
 }
 
-async function getProjectTemplate(postUrl: string): Promise<string | null> {
+async function getProjectTemplate(postUrl: string, supabase: any): Promise<string | null> {
   // Get project_id through keyword -> reddit_post relationship
   const { data: postData } = await supabase
     .from('reddit_posts')
@@ -101,8 +101,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ data: null, error: 'postUrl and businessDescription are required' }, { status: 400 })
     }
 
+    const supabase = await createClient()
+    
+    // Check authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json(
+        { data: null, error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
     // Get project template
-    const projectTemplate = await getProjectTemplate(postUrl)
+    const projectTemplate = await getProjectTemplate(postUrl, supabase)
     
     // Fallback to default template if no project template exists
     const defaultTemplate = `You are writing a single Reddit comment as a customer used of a business service. Use this tone: {{tone}}

@@ -2,27 +2,45 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Keyword, RedditPost } from '@/lib/types'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase/client'
 
 export default function Dashboard() {
+  const router = useRouter()
+  const supabase = createClient()
   const [keywords, setKeywords] = useState<Keyword[]>([])
   const [posts, setPosts] = useState<RedditPost[]>([])
   const [totalPostsCount, setTotalPostsCount] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
+  const [isAuthChecked, setIsAuthChecked] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const fetchData = async () => {
+    const checkAuthAndFetchData = async () => {
       setIsLoading(true)
       setError(null)
       
       try {
+        // Ensure authenticated; redirect to login if not
+        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        
+        if (authError || !user) {
+          router.replace('/auth/login')
+          return
+        }
+        
+        setIsAuthChecked(true)
+
         // Fetch keywords
         const keywordsResponse = await fetch('/api/keywords')
         const { data: keywordsData, error: keywordsError } = await keywordsResponse.json()
 
         if (!keywordsResponse.ok || keywordsError) {
+          if (keywordsResponse.status === 401) {
+            router.push('/auth/login')
+            return
+          }
           throw new Error(keywordsError || 'Failed to fetch keywords')
         }
 
@@ -73,10 +91,11 @@ export default function Dashboard() {
       }
     }
 
-    fetchData()
-  }, [])
+    checkAuthAndFetchData()
+  }, [router, supabase])
 
-  if (isLoading) {
+  // Don't render anything until auth is checked
+  if (!isAuthChecked || isLoading) {
     return (
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         <div className="text-center py-12">

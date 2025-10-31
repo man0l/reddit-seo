@@ -1,11 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase/server'
 
 export async function GET() {
   try {
+    const supabase = await createClient()
+    
+    // Check authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json(
+        { data: null, error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
     const { data, error } = await supabase
       .from('projects')
       .select('*')
+      .eq('user_id', user.id)
       .order('created_at', { ascending: false })
 
     if (error) throw error
@@ -21,6 +33,17 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = await createClient()
+    
+    // Check authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json(
+        { data: null, error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
     const body = await request.json()
     const { name, description } = body
 
@@ -35,7 +58,8 @@ export async function POST(request: NextRequest) {
       .from('projects')
       .insert([{ 
         name: name.trim(), 
-        description: description?.trim() || null 
+        description: description?.trim() || null,
+        user_id: user.id
       }])
       .select()
       .single()
@@ -61,6 +85,17 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const supabase = await createClient()
+    
+    // Check authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json(
+        { data: null, error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
 
@@ -75,6 +110,7 @@ export async function DELETE(request: NextRequest) {
       .from('projects')
       .delete()
       .eq('id', id)
+      .eq('user_id', user.id)
 
     if (error) throw error
 
@@ -89,6 +125,17 @@ export async function DELETE(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    const supabase = await createClient()
+    
+    // Check authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json(
+        { data: null, error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
     const body = await request.json()
     const { id, name, description, prompt_template, subreddit_exclusions } = body
 
@@ -123,6 +170,7 @@ export async function PATCH(request: NextRequest) {
       .from('projects')
       .update(updateData)
       .eq('id', id)
+      .eq('user_id', user.id)
       .select()
       .single()
 

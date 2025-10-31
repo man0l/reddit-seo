@@ -1,9 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase/server'
 import { checkRankings, saveRankingsToDatabase } from '@/lib/rankings'
 
 export async function GET(request: NextRequest) {
   try {
+    const supabase = await createClient()
+    
+    // Check authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json(
+        { data: null, error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
     const { searchParams } = new URL(request.url)
     const projectId = searchParams.get('project_id')
 
@@ -29,10 +40,10 @@ export async function GET(request: NextRequest) {
   }
 }
 
-async function checkRankingsForKeyword(keywordId: string, keywordText: string) {
+async function checkRankingsForKeyword(keywordId: string, keywordText: string, supabaseClient: any) {
   try {
     const redditPosts = await checkRankings(keywordText)
-    await saveRankingsToDatabase(keywordId, keywordText, redditPosts)
+    await saveRankingsToDatabase(keywordId, keywordText, redditPosts, supabaseClient)
     return { success: true, postsCount: redditPosts.length }
   } catch (error) {
     console.error(`Error checking rankings for keyword ${keywordText}:`, error)
@@ -42,6 +53,17 @@ async function checkRankingsForKeyword(keywordId: string, keywordText: string) {
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = await createClient()
+    
+    // Check authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json(
+        { data: null, error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
     const body = await request.json()
     const { keyword, keywords } = body
 
@@ -118,7 +140,7 @@ export async function POST(request: NextRequest) {
 
           // Auto-check rankings for newly added keywords (in background)
           insertedData?.forEach((kw) => {
-            checkRankingsForKeyword(kw.id, kw.keyword).catch(console.error)
+            checkRankingsForKeyword(kw.id, kw.keyword, supabase).catch(console.error)
           })
 
           return NextResponse.json({
@@ -133,7 +155,7 @@ export async function POST(request: NextRequest) {
 
       // Auto-check rankings for newly added keywords (in background)
       data?.forEach((kw) => {
-        checkRankingsForKeyword(kw.id, kw.keyword).catch(console.error)
+        checkRankingsForKeyword(kw.id, kw.keyword, supabase).catch(console.error)
       })
 
       return NextResponse.json({
@@ -180,7 +202,7 @@ export async function POST(request: NextRequest) {
 
     // Auto-check rankings for newly added keyword (in background)
     if (data) {
-      checkRankingsForKeyword(data.id, data.keyword).catch(console.error)
+      checkRankingsForKeyword(data.id, data.keyword, supabase).catch(console.error)
     }
 
     return NextResponse.json({ data, error: null }, { status: 201 })
@@ -194,6 +216,17 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const supabase = await createClient()
+    
+    // Check authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json(
+        { data: null, error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
     const ids = searchParams.get('ids')

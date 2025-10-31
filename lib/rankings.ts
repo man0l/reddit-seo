@@ -197,7 +197,10 @@ export async function checkRankings(keyword: string): Promise<RedditPostData[]> 
   return redditPosts
 }
 
-export async function saveRankingsToDatabase(keywordId: string, keywordText: string, redditPosts: RedditPostData[]): Promise<void> {
+export async function saveRankingsToDatabase(keywordId: string, keywordText: string, redditPosts: RedditPostData[], supabaseClient?: any): Promise<void> {
+  // Use provided client or fallback to default (for Edge Functions)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = supabaseClient || (await import('@/lib/supabase')).supabase
   const now = new Date().toISOString()
   
   if (redditPosts.length === 0) {
@@ -322,8 +325,8 @@ export async function saveRankingsToDatabase(keywordId: string, keywordText: str
     if (allPosts) {
       const currentUrls = redditPosts.map((p) => p.post_url)
       const postsToDelete = allPosts
-        .filter((post) => !currentUrls.includes(post.post_url))
-        .map((post) => post.id)
+        .filter((post: { post_url: string }) => !currentUrls.includes(post.post_url))
+        .map((post: { id: string }) => post.id)
 
       if (postsToDelete.length > 0) {
         await supabase

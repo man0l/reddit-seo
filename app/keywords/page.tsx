@@ -7,9 +7,12 @@ import KeywordForm from '@/components/KeywordForm'
 import BulkKeywordForm from '@/components/BulkKeywordForm'
 import KeywordList from '@/components/KeywordList'
 import { Project } from '@/lib/types'
+import { createClient } from '@/lib/supabase/client'
 
 export default function KeywordsPage() {
   const router = useRouter()
+  const supabase = createClient()
+  const [isAuthChecked, setIsAuthChecked] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [activeTab, setActiveTab] = useState<'single' | 'bulk'>('single')
   const [projects, setProjects] = useState<Project[]>([])
@@ -21,11 +24,28 @@ export default function KeywordsPage() {
   const [createError, setCreateError] = useState<string | null>(null)
 
   useEffect(() => {
-    const fetchProjects = async () => {
+    const checkAuthAndFetchProjects = async () => {
       try {
+        // Check authentication first
+        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        
+        if (authError || !user) {
+          router.replace('/auth/login')
+          return
+        }
+        
+        setIsAuthChecked(true)
+
         const response = await fetch('/api/projects')
         const { data, error } = await response.json()
-        if (error) throw new Error(error)
+        
+        if (!response.ok || error) {
+          if (response.status === 401) {
+            router.replace('/auth/login')
+            return
+          }
+          throw new Error(error || 'Failed to fetch projects')
+        }
         
         setProjects(data || [])
         // Auto-select first project if available
@@ -39,8 +59,19 @@ export default function KeywordsPage() {
       }
     }
 
-    fetchProjects()
-  }, [])
+    checkAuthAndFetchProjects()
+  }, [router, supabase, selectedProjectId])
+
+  // Don't render until auth is checked
+  if (!isAuthChecked) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-500">Loading...</p>
+        </div>
+      </div>
+    )
+  }
 
   const handleKeywordAdded = () => {
     setRefreshKey((prev) => prev + 1)

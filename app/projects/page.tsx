@@ -1,12 +1,17 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Project } from '@/lib/types'
 import ConfirmationModal from '@/components/ConfirmationModal'
+import { createClient } from '@/lib/supabase/client'
 
 export default function ProjectsPage() {
+  const router = useRouter()
+  const supabase = createClient()
   const [projects, setProjects] = useState<Project[]>([])
+  const [isAuthChecked, setIsAuthChecked] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
@@ -43,8 +48,37 @@ export default function ProjectsPage() {
   }
 
   useEffect(() => {
-    fetchProjects()
-  }, [])
+    const checkAuthAndFetchProjects = async () => {
+      try {
+        // Check authentication first
+        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        
+        if (authError || !user) {
+          router.replace('/auth/login')
+          return
+        }
+        
+        setIsAuthChecked(true)
+        await fetchProjects()
+      } catch (err) {
+        console.error('Auth check failed:', err)
+        router.replace('/auth/login')
+      }
+    }
+
+    checkAuthAndFetchProjects()
+  }, [router, supabase])
+
+  // Don't render until auth is checked
+  if (!isAuthChecked) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-500">Loading...</p>
+        </div>
+      </div>
+    )
+  }
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()

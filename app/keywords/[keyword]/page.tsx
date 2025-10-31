@@ -1,16 +1,46 @@
 'use client'
 
-import { use } from 'react'
+import { use, useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import RankingsList from '@/components/RankingsList'
 import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
 
 export default function KeywordRankingsPage({
   params,
 }: {
   params: Promise<{ keyword: string }>
 }) {
+  const router = useRouter()
+  const supabase = createClient()
+  const [isAuthChecked, setIsAuthChecked] = useState(false)
   const { keyword } = use(params)
   const decodedKeyword = decodeURIComponent(keyword)
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      
+      if (authError || !user) {
+        router.replace('/auth/login')
+        return
+      }
+      
+      setIsAuthChecked(true)
+    }
+
+    checkAuth()
+  }, [router, supabase])
+
+  if (!isAuthChecked) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-500">Loading...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">

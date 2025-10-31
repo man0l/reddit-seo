@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase/server'
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,6 +10,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         { data: null, error: 'postUrl is required' },
         { status: 400 }
+      )
+    }
+
+    const supabase = await createClient()
+    
+    // Check authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json(
+        { data: null, error: 'Unauthorized' },
+        { status: 401 }
       )
     }
 
