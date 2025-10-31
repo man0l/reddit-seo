@@ -57,7 +57,16 @@ async function scrapeReddit(postUrl: string, includeComments: boolean) {
 
 async function getProjectTemplate(postUrl: string, supabase: any): Promise<string | null> {
   try {
+    // Verify authentication context
+    const { data: { user }, error: authCheckError } = await supabase.auth.getUser()
+    if (authCheckError || !user) {
+      console.error('Authentication check failed in getProjectTemplate:', authCheckError)
+      return null
+    }
+    console.log('Authenticated user in getProjectTemplate:', user.id, user.email)
+
     // Step 1: Get the post and its keyword_id (may be multiple posts with same URL, so get first one)
+    // RLS will automatically filter to only posts from the user's projects
     const { data: postsData, error: postError } = await supabase
       .from('reddit_posts')
       .select('keyword_id')
@@ -70,7 +79,7 @@ async function getProjectTemplate(postUrl: string, supabase: any): Promise<strin
     }
 
     if (!postsData || postsData.length === 0 || !postsData[0]?.keyword_id) {
-      console.warn('No post data or keyword_id found for postUrl:', postUrl)
+      console.warn('No post data or keyword_id found for postUrl:', postUrl, 'This might be due to RLS filtering if the post doesn\'t belong to the authenticated user')
       return null
     }
 
