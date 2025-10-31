@@ -103,24 +103,33 @@ export default function GenerateReplyModal({ isOpen, postUrl, onClose }: Generat
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">Style</label>
-              <select
-                value={style}
-                onChange={(e) => setStyle(e.target.value as 'casual' | 'laconic')}
-                className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all bg-white"
-              >
-                <option value="casual">Casual</option>
-                <option value="laconic">Laconic</option>
-              </select>
+              <div className="relative">
+                <select
+                  value={style}
+                  onChange={(e) => setStyle(e.target.value as 'casual' | 'laconic')}
+                  className="w-full px-4 py-3 pr-10 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white appearance-none cursor-pointer hover:border-indigo-400 hover:shadow-sm font-medium text-slate-900"
+                >
+                  <option value="casual">Casual</option>
+                  <option value="laconic">Laconic</option>
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                  <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </div>
             </div>
             <div className="md:col-span-2 flex items-center gap-3 mt-6 md:mt-8">
-              <input
-                id="include-comments"
-                type="checkbox"
-                checked={includeComments}
-                onChange={(e) => setIncludeComments(e.target.checked)}
-                className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
-              />
-              <label htmlFor="include-comments" className="text-sm text-slate-700">Include recent Reddit comments to tailor the reply</label>
+              <div className="relative flex items-center">
+                <input
+                  id="include-comments"
+                  type="checkbox"
+                  checked={includeComments}
+                  onChange={(e) => setIncludeComments(e.target.checked)}
+                  className="w-5 h-5 text-indigo-600 border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 cursor-pointer transition-all"
+                />
+              </div>
+              <label htmlFor="include-comments" className="text-sm text-slate-700 cursor-pointer">Include recent Reddit comments to tailor the reply</label>
             </div>
           </div>
 

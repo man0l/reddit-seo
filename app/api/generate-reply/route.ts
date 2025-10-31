@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { supabase } from '@/lib/supabase'
 
 interface ApifyScrapedItem {
   title?: string
@@ -75,12 +76,12 @@ function buildPrompt(params: {
     `Thread URL: ${postUrl}`,
     postText ? `Original post context: ${postText}` : '',
     commentsSection,
-    'Requirements: 
-- Avoid sounding salesy. Offer genuine help. 
+    `Requirements:
+- Avoid sounding salesy. Offer genuine help.
 - Include concrete, actionable tips.
 - If suggesting your product/service, disclose affiliation transparently in one short line.
-- Keep formatting Reddit-friendly (short paragraphs, bullet points if useful). 
-- Never include tracking links. No emojis. No hashtags.',
+- Keep formatting Reddit-friendly (short paragraphs, bullet points if useful).
+- Never include tracking links. No emojis. No hashtags.`,
     'Return only the comment text.'
   ].filter(Boolean).join('\n\n')
 }
@@ -99,10 +100,40 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ data: null, error: 'postUrl and businessDescription are required' }, { status: 400 })
     }
 
-    // Optionally scrape comments
+    // First, try to get stored post data from database
     let scraped: ApifyScrapedItem | null = null
-    if (includeComments) {
-      const { data, error } = await scrapeReddit(postUrl, true)
+    const { data: dbPost } = await supabase
+      .from('reddit_posts')
+      .select('apify_scraped_data')
+      .eq('post_url', postUrl)
+      .single()
+
+    if (dbPost?.apify_scraped_data) {
+      // Use stored data (includes post content like text/content)
+      // Note: Ranking checks use skipComments: true, so stored data typically won't have comments
+      scraped = dbPost.apify_scraped_data as ApifyScrapedItem
+      
+      // Check if comments exist in stored data (they won't if scraped with skipComments: true)
+      const hasComments = scraped.comments && 
+                         Array.isArray(scraped.comments) && 
+                         scraped.comments.length > 0
+      
+      // If user wants comments but stored data doesn't have them, scrape fresh
+      if (includeComments && !hasComments) {
+        const { data, error } = await scrapeReddit(postUrl, true)
+        if (!error && data) {
+          // Merge fresh comments into stored data (keep stored post content)
+          scraped = {
+            ...scraped,
+            comments: data.comments || scraped.comments,
+            numberOfComments: data.numberOfComments || scraped.numberOfComments
+          }
+        }
+      }
+    } else {
+      // No stored data - scrape fresh to get post content
+      // Use includeComments flag to determine if we should fetch comments too
+      const { data, error } = await scrapeReddit(postUrl, includeComments)
       if (!error) scraped = data
     }
 
