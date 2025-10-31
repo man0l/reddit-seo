@@ -292,6 +292,24 @@ export default function KeywordList({ projectId, onKeywordClick }: KeywordListPr
   const selectedCount = selectedIds.size
   const allSelected = keywords.length > 0 && selectedIds.size === keywords.length
   const selectedPostsCount = selectedPostUrls.size
+  
+  // Get all visible post URLs for "Select All Posts"
+  const allVisiblePostUrls = keywords
+    .filter(k => expandedKeywords.has(k.id))
+    .flatMap(k => k.posts || [])
+    .map(p => p.post_url)
+  const allPostsSelected = allVisiblePostUrls.length > 0 && 
+    allVisiblePostUrls.every(url => selectedPostUrls.has(url))
+
+  const toggleSelectAllPosts = () => {
+    if (allPostsSelected) {
+      setSelectedPostUrls(new Set())
+    } else {
+      const newSet = new Set(selectedPostUrls)
+      allVisiblePostUrls.forEach(url => newSet.add(url))
+      setSelectedPostUrls(newSet)
+    }
+  }
 
   const handleBulkGenerate = async (businessDescription: string, style: string, includeComments: boolean) => {
     if (selectedPostUrls.size === 0) return
@@ -375,14 +393,14 @@ export default function KeywordList({ projectId, onKeywordClick }: KeywordListPr
             </button>
           )}
           {selectedPostsCount > 0 && (
-            <>
-              <span className="text-sm text-gray-600 font-medium">
+            <div className="flex items-center gap-3 bg-indigo-50 px-4 py-2 rounded-xl border-2 border-indigo-300">
+              <span className="text-sm text-indigo-700 font-semibold">
                 {selectedPostsCount} post{selectedPostsCount !== 1 ? 's' : ''} selected
               </span>
               <button
                 onClick={() => setShowBulkGenerateModal(true)}
                 disabled={isBulkGenerating}
-                className="px-4 py-2 text-sm bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all shadow-md shadow-indigo-500/30 hover:shadow-lg hover:shadow-indigo-500/40 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-semibold"
+                className="px-5 py-2.5 text-sm bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all shadow-lg shadow-indigo-500/40 hover:shadow-xl hover:shadow-indigo-500/50 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-bold"
               >
                 {isBulkGenerating ? (
                   <>
@@ -401,21 +419,36 @@ export default function KeywordList({ projectId, onKeywordClick }: KeywordListPr
                   </>
                 )}
               </button>
-            </>
+            </div>
           )}
         </div>
       </div>
       {keywords.length > 0 && (
-        <div className="mb-4 flex items-center gap-2 p-3 bg-gray-50 rounded-xl">
-          <input
-            type="checkbox"
-            checked={allSelected}
-            onChange={toggleSelectAll}
-            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-          />
-          <label className="text-sm text-gray-700 cursor-pointer font-medium" onClick={toggleSelectAll}>
-            Select All
-          </label>
+        <div className="mb-4 space-y-2">
+          <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={toggleSelectAll}
+              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+            />
+            <label className="text-sm text-gray-700 cursor-pointer font-medium" onClick={toggleSelectAll}>
+              Select All Keywords
+            </label>
+          </div>
+          {allVisiblePostUrls.length > 0 && (
+            <div className="flex items-center gap-2 p-3 bg-indigo-50 rounded-xl border border-indigo-200">
+              <input
+                type="checkbox"
+                checked={allPostsSelected}
+                onChange={toggleSelectAllPosts}
+                className="w-4 h-4 text-indigo-600 border-indigo-300 rounded focus:ring-indigo-500"
+              />
+              <label className="text-sm text-indigo-700 cursor-pointer font-medium" onClick={toggleSelectAllPosts}>
+                Select All Posts ({allVisiblePostUrls.length} visible)
+              </label>
+            </div>
+          )}
         </div>
       )}
       <div className="space-y-4">
