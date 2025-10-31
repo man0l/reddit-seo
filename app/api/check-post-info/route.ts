@@ -48,10 +48,10 @@ export async function GET(request: NextRequest) {
       .eq('id', projectId)
       .single()
 
-    const exclusions = projectData?.subreddit_exclusions || []
+    const exclusions: string[] = projectData?.subreddit_exclusions || []
     // Normalize subreddit for case-insensitive comparison (same normalization as when storing exclusions)
     const normalizedSubreddit = subreddit.toLowerCase().replace(/^r\//, '')
-    const isExcluded = exclusions.some(exclusion => exclusion.toLowerCase().replace(/^r\//, '') === normalizedSubreddit)
+    const isExcluded = exclusions.some((exclusion: string) => exclusion.toLowerCase().replace(/^r\//, '') === normalizedSubreddit)
 
     return NextResponse.json({
       data: {
