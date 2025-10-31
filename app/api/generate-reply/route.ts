@@ -65,6 +65,18 @@ async function getProjectTemplate(postUrl: string, supabase: any): Promise<strin
     }
     console.log('Authenticated user in getProjectTemplate:', user.id, user.email)
 
+    // Test RLS access by checking if user can see their own projects
+    const { data: testProjects, error: testError } = await supabase
+      .from('projects')
+      .select('id, name')
+      .limit(1)
+    
+    if (testError) {
+      console.error('RLS test failed - cannot access projects:', testError)
+    } else {
+      console.log('RLS test passed - can access projects. Count:', testProjects?.length || 0)
+    }
+
     // Step 1: Get the post and its keyword_id (may be multiple posts with same URL, so get first one)
     // RLS will automatically filter to only posts from the user's projects
     const { data: postsData, error: postError } = await supabase
@@ -158,10 +170,22 @@ export async function POST(req: NextRequest) {
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) {
+      console.error('Auth error in generate-reply:', authError, 'User:', user)
       return NextResponse.json(
         { data: null, error: 'Unauthorized' },
         { status: 401 }
       )
+    }
+    
+    // Log authenticated user for debugging
+    console.log('Generate reply - Authenticated user:', user.id, user.email)
+    
+    // Verify session is valid
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+    if (sessionError || !session) {
+      console.error('Session error in generate-reply:', sessionError, 'Session:', session)
+    } else {
+      console.log('Generate reply - Session valid, user_id:', session.user.id)
     }
 
     // Get project template
