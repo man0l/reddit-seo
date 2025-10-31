@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Keyword, RedditPost } from '@/lib/types'
+import { Keyword, RedditPost, REPLY_STYLES } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
 import ConfirmationModal from '@/components/ConfirmationModal'
 import GenerateReplyModal from '@/components/GenerateReplyModal'
@@ -31,6 +31,25 @@ export default function KeywordList({ projectId, onKeywordClick }: KeywordListPr
   const [confirmSingleDelete, setConfirmSingleDelete] = useState<string | null>(null)
   const [generateUrl, setGenerateUrl] = useState<string | null>(null)
   const [postsWithDrafts, setPostsWithDrafts] = useState<Set<string>>(new Set())
+  const [selectedPostUrls, setSelectedPostUrls] = useState<Set<string>>(new Set())
+  const [showBulkGenerateModal, setShowBulkGenerateModal] = useState(false)
+  const [isBulkGenerating, setIsBulkGenerating] = useState(false)
+  const [bulkGenerateProgress, setBulkGenerateProgress] = useState<{ current: number; total: number; currentUrl?: string } | null>(null)
+  const [bulkBusinessDescription, setBulkBusinessDescription] = useState('')
+
+  // Load business description when modal opens
+  useEffect(() => {
+    if (showBulkGenerateModal && !bulkBusinessDescription) {
+      fetch('/api/business-description')
+        .then(res => res.json())
+        .then(({ data, error }) => {
+          if (!error && data?.description) {
+            setBulkBusinessDescription(data.description)
+          }
+        })
+        .catch(() => {})
+    }
+  }, [showBulkGenerateModal, bulkBusinessDescription])
 
   const fetchKeywords = async () => {
     setIsLoading(true)
@@ -272,16 +291,66 @@ export default function KeywordList({ projectId, onKeywordClick }: KeywordListPr
 
   const selectedCount = selectedIds.size
   const allSelected = keywords.length > 0 && selectedIds.size === keywords.length
+  const selectedPostsCount = selectedPostUrls.size
+
+  const handleBulkGenerate = async (businessDescription: string, style: string, includeComments: boolean) => {
+    if (selectedPostUrls.size === 0) return
+
+    setIsBulkGenerating(true)
+    setBulkGenerateProgress({ current: 0, total: selectedPostUrls.size })
+    setShowBulkGenerateModal(false)
+
+    try {
+      const postUrlsArray = Array.from(selectedPostUrls)
+      
+      const response = await fetch('/api/generate-reply/bulk', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          postUrls: postUrlsArray,
+          businessDescription,
+          style,
+          includeComments,
+        }),
+      })
+
+      const { data, error } = await response.json()
+
+      if (!response.ok || error) {
+        throw new Error(error || 'Failed to generate replies')
+      }
+
+      // Update draft status for successfully generated posts
+      const successUrls = data.results
+        .filter((r: any) => r.success)
+        .map((r: any) => r.postUrl)
+      
+      setPostsWithDrafts(prev => {
+        const next = new Set(prev)
+        successUrls.forEach((url: string) => next.add(url))
+        return next
+      })
+
+      // Clear selection
+      setSelectedPostUrls(new Set())
+
+      alert(`Generated ${data.summary.success} replies (${data.summary.skipped} skipped, ${data.summary.errors} errors)`)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to generate replies')
+    } finally {
+      setIsBulkGenerating(false)
+      setBulkGenerateProgress(null)
+    }
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-semibold text-gray-900">Your Keywords</h2>
-        {selectedCount > 0 && (
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-600 font-medium">
-              {selectedCount} selected
-            </span>
+        <div className="flex items-center gap-3">
+          {selectedCount > 0 && (
             <button
               onClick={handleBulkDelete}
               disabled={isBulkDeleting}
@@ -300,12 +369,41 @@ export default function KeywordList({ projectId, onKeywordClick }: KeywordListPr
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                   </svg>
-                  Delete Selected ({selectedCount})
+                  Delete Keywords ({selectedCount})
                 </>
               )}
             </button>
-          </div>
-        )}
+          )}
+          {selectedPostsCount > 0 && (
+            <>
+              <span className="text-sm text-gray-600 font-medium">
+                {selectedPostsCount} post{selectedPostsCount !== 1 ? 's' : ''} selected
+              </span>
+              <button
+                onClick={() => setShowBulkGenerateModal(true)}
+                disabled={isBulkGenerating}
+                className="px-4 py-2 text-sm bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all shadow-md shadow-indigo-500/30 hover:shadow-lg hover:shadow-indigo-500/40 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-semibold"
+              >
+                {isBulkGenerating ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6M8 6h8M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                    Generate AI Reply ({selectedPostsCount})
+                  </>
+                )}
+              </button>
+            </>
+          )}
+        </div>
       </div>
       {keywords.length > 0 && (
         <div className="mb-4 flex items-center gap-2 p-3 bg-gray-50 rounded-xl">
@@ -436,6 +534,20 @@ export default function KeywordList({ projectId, onKeywordClick }: KeywordListPr
                           className="p-4 bg-white rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all"
                         >
                           <div className="flex items-start gap-4">
+                            <input
+                              type="checkbox"
+                              checked={selectedPostUrls.has(post.post_url)}
+                              onChange={(e) => {
+                                const newSet = new Set(selectedPostUrls)
+                                if (e.target.checked) {
+                                  newSet.add(post.post_url)
+                                } else {
+                                  newSet.delete(post.post_url)
+                                }
+                                setSelectedPostUrls(newSet)
+                              }}
+                              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 flex-shrink-0 mt-1"
+                            />
                             <div className="flex-shrink-0">
                               <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md shadow-indigo-500/20">
                                 <span className="text-lg font-bold text-white">#{post.rank_position}</span>
@@ -562,6 +674,146 @@ export default function KeywordList({ projectId, onKeywordClick }: KeywordListPr
         onConfirm={confirmSingleDeleteAction}
         onCancel={() => setConfirmSingleDelete(null)}
       />
+
+      {/* Bulk Generate Modal */}
+      {showBulkGenerateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-slate-200 p-6 flex items-center justify-between rounded-t-2xl">
+              <h3 className="text-xl font-bold text-slate-900">Bulk Generate AI Replies</h3>
+              <button
+                onClick={() => setShowBulkGenerateModal(false)}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
+                <p className="text-sm text-indigo-800 font-medium">
+                  Generating replies for {selectedPostsCount} post{selectedPostsCount !== 1 ? 's' : ''}. Posts with existing drafts will be skipped.
+                </p>
+              </div>
+
+              <form onSubmit={(e) => {
+                e.preventDefault()
+                const formData = new FormData(e.target as HTMLFormElement)
+                const businessDescription = formData.get('businessDescription') as string
+                const style = formData.get('style') as string
+                const includeComments = formData.get('includeComments') === 'on'
+                handleBulkGenerate(businessDescription, style, includeComments)
+              }}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Business description</label>
+                    <textarea
+                      name="businessDescription"
+                      value={bulkBusinessDescription}
+                      onChange={(e) => setBulkBusinessDescription(e.target.value)}
+                      placeholder="Describe your business, audience, product/service, tone constraints..."
+                      rows={3}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                      required
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">Style</label>
+                      <div className="relative">
+                        <select
+                          name="style"
+                          defaultValue="casual"
+                          className="w-full px-4 py-3 pr-10 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white appearance-none cursor-pointer hover:border-indigo-400 font-medium text-slate-900"
+                        >
+                          {Object.entries(REPLY_STYLES).map(([key]) => (
+                            <option key={key} value={key}>
+                              {key.charAt(0).toUpperCase() + key.slice(1)}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                          <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="md:col-span-2 flex items-center gap-3 mt-6 md:mt-8">
+                      <div className="relative flex items-center">
+                        <input
+                          id="bulk-include-comments"
+                          name="includeComments"
+                          type="checkbox"
+                          className="w-5 h-5 text-indigo-600 border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 cursor-pointer transition-all"
+                        />
+                      </div>
+                      <label htmlFor="bulk-include-comments" className="text-sm text-slate-700 cursor-pointer">
+                        Include recent Reddit comments to tailor the reply
+                      </label>
+                    </div>
+                  </div>
+
+                  {bulkGenerateProgress && (
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-semibold text-slate-700">
+                          Progress: {bulkGenerateProgress.current} / {bulkGenerateProgress.total}
+                        </span>
+                        <span className="text-sm text-slate-500">
+                          {Math.round((bulkGenerateProgress.current / bulkGenerateProgress.total) * 100)}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-200 rounded-full h-2">
+                        <div
+                          className="bg-gradient-to-r from-indigo-600 to-purple-600 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${(bulkGenerateProgress.current / bulkGenerateProgress.total) * 100}%` }}
+                        />
+                      </div>
+                      {bulkGenerateProgress.currentUrl && (
+                        <p className="text-xs text-slate-500 mt-2 truncate">
+                          Processing: {bulkGenerateProgress.currentUrl}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setShowBulkGenerateModal(false)}
+                      disabled={isBulkGenerating}
+                      className="px-4 py-2 text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isBulkGenerating}
+                      className="px-4 py-2 text-sm bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all shadow-md shadow-indigo-500/30 disabled:opacity-50 disabled:cursor-not-allowed font-semibold flex items-center gap-2"
+                    >
+                      {isBulkGenerating ? (
+                        <>
+                          <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Generating...
+                        </>
+                      ) : (
+                        'Generate Replies'
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
 
       <GenerateReplyModal 
         isOpen={!!generateUrl} 
