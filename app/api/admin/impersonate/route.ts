@@ -73,11 +73,47 @@ export async function POST(request: NextRequest) {
     }
 
     // Extract the token_hash from the link
-    const linkUrl = new URL(linkData.properties.action_link)
-    const tokenHash = linkUrl.searchParams.get('token_hash') || linkUrl.hash.match(/token_hash=([^&]+)/)?.[1]
+    // First check if hashed_token is directly in properties (most reliable)
+    let tokenHash: string | null = 
+      linkData.properties?.hashed_token || 
+      linkData.hashed_token || 
+      null
+
+    // If not found, extract from action_link URL
+    if (!tokenHash) {
+      const actionLink = linkData.properties?.action_link || linkData.properties?.actionLink || linkData.action_link
+      
+      if (!actionLink) {
+        console.error('No action_link or hashed_token in linkData:', JSON.stringify(linkData, null, 2))
+        throw new Error('No action_link or hashed_token found in generated link')
+      }
+
+      try {
+        const linkUrl = new URL(actionLink)
+        
+        // Try different parameter names and locations in URL
+        tokenHash = 
+          linkUrl.searchParams.get('token_hash') ||
+          linkUrl.searchParams.get('token') ||
+          linkUrl.hash.match(/token_hash=([^&]+)/)?.[1] ||
+          linkUrl.hash.match(/token=([^&]+)/)?.[1] ||
+          null
+        
+        // Decode if it's URL encoded
+        if (tokenHash) {
+          tokenHash = decodeURIComponent(tokenHash)
+        }
+      } catch (urlError) {
+        console.error('Error parsing action_link URL:', actionLink, urlError)
+        // If URL parsing fails, try extracting directly from the string using regex
+        const tokenMatch = actionLink.match(/token_hash=([^&?#]+)/) || actionLink.match(/token=([^&?#]+)/)
+        tokenHash = tokenMatch?.[1] ? decodeURIComponent(tokenMatch[1]) : null
+      }
+    }
 
     if (!tokenHash) {
-      throw new Error('Failed to extract token_hash from generated link')
+      console.error('Failed to extract token_hash. Link data:', JSON.stringify(linkData, null, 2))
+      throw new Error('Failed to extract token_hash from generated link. Check server logs for details.')
     }
 
     // Exchange the token for a session using the regular client
