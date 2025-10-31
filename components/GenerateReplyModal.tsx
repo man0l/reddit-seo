@@ -22,21 +22,38 @@ export default function GenerateReplyModal({ isOpen, postUrl, onClose }: Generat
   const [isLoadingPostInfo, setIsLoadingPostInfo] = useState(false)
   const [editedReply, setEditedReply] = useState<string>('')
   const [hasDraft, setHasDraft] = useState(false)
+  const [isLoadingData, setIsLoadingData] = useState(false)
 
   // Load saved description, drafts, and check exclusions once
   useEffect(() => {
     if (isOpen && postUrl) {
-      const saved = localStorage.getItem('business_description')
-      if (saved && !businessDescription) setBusinessDescription(saved)
+      setIsLoadingData(true)
 
-      // Load draft if exists
-      const draftKey = `reply_draft_${postUrl}`
-      const savedDraft = localStorage.getItem(draftKey)
-      if (savedDraft) {
-        setEditedReply(savedDraft)
-        setReply(savedDraft) // Show draft as reply
-        setHasDraft(true)
-      }
+      // Load business description from Supabase
+      fetch('/api/business-description')
+        .then(res => res.json())
+        .then(({ data, error }) => {
+          if (!error && data?.description && !businessDescription) {
+            setBusinessDescription(data.description)
+          }
+        })
+        .catch(() => {
+          // Silently fail - will use empty description
+        })
+
+      // Load draft from Supabase
+      fetch(`/api/reply-drafts?postUrl=${encodeURIComponent(postUrl)}`)
+        .then(res => res.json())
+        .then(({ data, error }) => {
+          if (!error && data?.draft_content) {
+            setEditedReply(data.draft_content)
+            setReply(data.draft_content) // Show draft as reply
+            setHasDraft(true)
+          }
+        })
+        .catch(() => {
+          // Silently fail - no draft to load
+        })
 
       // Check post info and exclusions
       setIsLoadingPostInfo(true)
@@ -52,7 +69,10 @@ export default function GenerateReplyModal({ isOpen, postUrl, onClose }: Generat
         .catch(() => {
           // Silently fail - we'll just proceed without exclusion check
         })
-        .finally(() => setIsLoadingPostInfo(false))
+        .finally(() => {
+          setIsLoadingPostInfo(false)
+          setIsLoadingData(false)
+        })
     } else {
       // Reset state when modal closes
       setSubreddit(null)
@@ -61,7 +81,7 @@ export default function GenerateReplyModal({ isOpen, postUrl, onClose }: Generat
       setEditedReply('')
       setHasDraft(false)
     }
-  }, [isOpen, postUrl])
+  }, [isOpen, postUrl, businessDescription])
 
   // Prevent body scroll when open
   useEffect(() => {
@@ -84,11 +104,15 @@ export default function GenerateReplyModal({ isOpen, postUrl, onClose }: Generat
     setReply(null)
 
     try {
-      // Persist description one-time
-      if (!localStorage.getItem('business_description') && businessDescription.trim().length > 0) {
-        localStorage.setItem('business_description', businessDescription.trim())
-      } else if (businessDescription.trim().length > 0) {
-        localStorage.setItem('business_description', businessDescription.trim())
+      // Save business description to Supabase
+      if (businessDescription.trim().length > 0) {
+        await fetch('/api/business-description', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ description: businessDescription.trim() }),
+        }).catch(() => {
+          // Silently fail - description save is not critical for reply generation
+        })
       }
 
       const res = await fetch('/api/generate-reply', {
@@ -113,23 +137,48 @@ export default function GenerateReplyModal({ isOpen, postUrl, onClose }: Generat
     }
   }
 
-  const handleSaveDraft = () => {
+  const handleSaveDraft = async () => {
     if (!postUrl || !editedReply.trim()) return
     
-    const draftKey = `reply_draft_${postUrl}`
-    localStorage.setItem(draftKey, editedReply.trim())
-    setHasDraft(true)
+    try {
+      const res = await fetch('/api/reply-drafts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          postUrl,
+          draftContent: editedReply.trim(),
+        }),
+      })
+
+      const { error } = await res.json()
+      if (error) throw new Error(error)
+
+      setHasDraft(true)
+    } catch (err) {
+      console.error('Failed to save draft:', err)
+      setError('Failed to save draft. Please try again.')
+    }
   }
 
-  const handleClearDraft = () => {
+  const handleClearDraft = async () => {
     if (!postUrl) return
     
-    const draftKey = `reply_draft_${postUrl}`
-    localStorage.removeItem(draftKey)
-    setHasDraft(false)
-    if (editedReply === reply) {
-      setEditedReply('')
-      setReply(null)
+    try {
+      const res = await fetch(`/api/reply-drafts?postUrl=${encodeURIComponent(postUrl)}`, {
+        method: 'DELETE',
+      })
+
+      const { error } = await res.json()
+      if (error) throw new Error(error)
+
+      setHasDraft(false)
+      if (editedReply === reply) {
+        setEditedReply('')
+        setReply(null)
+      }
+    } catch (err) {
+      console.error('Failed to clear draft:', err)
+      setError('Failed to clear draft. Please try again.')
     }
   }
 
