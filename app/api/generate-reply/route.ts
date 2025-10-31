@@ -56,27 +56,65 @@ async function scrapeReddit(postUrl: string, includeComments: boolean) {
 }
 
 async function getProjectTemplate(postUrl: string, supabase: any): Promise<string | null> {
-  // Get project_id through keyword -> reddit_post relationship
-  const { data: postData } = await supabase
-    .from('reddit_posts')
-    .select('keyword_id, keywords!inner(project_id)')
-    .eq('post_url', postUrl)
-    .single()
+  try {
+    // Step 1: Get the post and its keyword_id
+    const { data: postData, error: postError } = await supabase
+      .from('reddit_posts')
+      .select('keyword_id')
+      .eq('post_url', postUrl)
+      .single()
 
-  if (!postData || !(postData as any).keywords) {
+    if (postError) {
+      console.error('Error fetching post data:', postError)
+      return null
+    }
+
+    if (!postData || !postData.keyword_id) {
+      console.warn('No post data or keyword_id found for postUrl:', postUrl)
+      return null
+    }
+
+    // Step 2: Get the keyword and its project_id
+    const { data: keywordData, error: keywordError } = await supabase
+      .from('keywords')
+      .select('project_id')
+      .eq('id', postData.keyword_id)
+      .single()
+
+    if (keywordError) {
+      console.error('Error fetching keyword data:', keywordError)
+      return null
+    }
+
+    if (!keywordData || !keywordData.project_id) {
+      console.warn('No keyword data or project_id found for keyword_id:', postData.keyword_id)
+      return null
+    }
+
+    // Step 3: Get the project template
+    const { data: projectData, error: projectError } = await supabase
+      .from('projects')
+      .select('prompt_template')
+      .eq('id', keywordData.project_id)
+      .single()
+
+    if (projectError) {
+      console.error('Error fetching project template:', projectError)
+      return null
+    }
+
+    const template = projectData?.prompt_template
+    if (!template) {
+      console.warn('No prompt_template found for project:', keywordData.project_id)
+      return null
+    }
+
+    console.log('Successfully loaded project template for postUrl:', postUrl)
+    return template
+  } catch (error) {
+    console.error('Unexpected error in getProjectTemplate:', error)
     return null
   }
-
-  const projectId = (postData as any).keywords.project_id
-
-  // Get project template
-  const { data: projectData } = await supabase
-    .from('projects')
-    .select('prompt_template')
-    .eq('id', projectId)
-    .single()
-
-  return projectData?.prompt_template || null
 }
 
 export async function POST(req: NextRequest) {
@@ -114,6 +152,13 @@ export async function POST(req: NextRequest) {
 
     // Get project template
     const projectTemplate = await getProjectTemplate(postUrl, supabase)
+    
+    // Log which template is being used for debugging
+    if (projectTemplate) {
+      console.log('Using project template for postUrl:', postUrl)
+    } else {
+      console.warn('No project template found, using default template for postUrl:', postUrl)
+    }
     
     // Fallback to default template if no project template exists
     const defaultTemplate = `You are writing a single Reddit comment as a customer used of a business service. Use this tone: {{tone}}
