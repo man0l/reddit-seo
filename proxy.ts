@@ -27,16 +27,17 @@ export async function proxy(request: NextRequest) {
     }
   )
 
-  // Refresh session if expired - required for Server Components
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  // Allow auth pages and callback
+  // Allow auth pages and callback - return early before any auth checks
   const isAuthPage = request.nextUrl.pathname.startsWith('/auth')
   if (isAuthPage) {
     return supabaseResponse
   }
+
+  // Refresh session if expired - required for Server Components
+  // Only do this for non-auth pages to avoid unnecessary calls
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
   // Protect API routes (except auth routes)
   if (request.nextUrl.pathname.startsWith('/api') && 
