@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Keyword, RedditPost } from '@/lib/types'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase/client'
 import ConfirmationModal from '@/components/ConfirmationModal'
 import GenerateReplyModal from '@/components/GenerateReplyModal'
 
@@ -18,6 +18,7 @@ interface KeywordWithPosts extends Keyword {
 }
 
 export default function KeywordList({ projectId, onKeywordClick }: KeywordListProps) {
+  const supabase = createClient()
   const [keywords, setKeywords] = useState<KeywordWithPosts[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -62,6 +63,12 @@ export default function KeywordList({ projectId, onKeywordClick }: KeywordListPr
 
       setKeywords(keywordsWithPosts)
       
+      // Auto-expand keywords that have posts
+      const keywordsWithPostsIds = keywordsWithPosts
+        .filter(k => k.posts && k.posts.length > 0)
+        .map(k => k.id)
+      setExpandedKeywords(new Set(keywordsWithPostsIds))
+      
       // Clean up selected IDs for keywords that no longer exist
       setSelectedIds(prev => {
         const keywordIds = new Set(keywordsWithPosts.map(k => k.id))
@@ -78,7 +85,10 @@ export default function KeywordList({ projectId, onKeywordClick }: KeywordListPr
     setCheckingRankings(prev => new Set(prev).add(keyword.id))
     
     try {
-      const response = await fetch(`/api/check-rankings/${encodeURIComponent(keyword.keyword)}`)
+      // Use POST to trigger actual ranking check (calls external APIs)
+      const response = await fetch(`/api/check-rankings/${encodeURIComponent(keyword.keyword)}`, {
+        method: 'POST',
+      })
       const { data, error: apiError } = await response.json()
 
       if (!response.ok || apiError) {
