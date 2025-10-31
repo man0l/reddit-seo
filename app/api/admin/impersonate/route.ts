@@ -45,28 +45,53 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Use admin client to create a session for the target user
+    // Use admin client to generate a magic link for the target user
     const adminClient = createAdminClient()
-    const { data: { session }, error: createError } = await adminClient.auth.admin.createSession({
-      userId,
-    })
-
-    if (createError || !session) {
-      throw createError || new Error('Failed to create session')
+    
+    // Get the target user's email
+    const { data: { user: targetUser }, error: userError } = await adminClient.auth.admin.getUserById(userId)
+    
+    if (userError || !targetUser) {
+      throw userError || new Error('Target user not found')
     }
 
-    // Create a response that will set the cookies using Supabase SSR pattern
+    if (!targetUser.email) {
+      throw new Error('Target user has no email address')
+    }
+
+    // Generate a magic link for impersonation
+    const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
+      type: 'magiclink',
+      email: targetUser.email,
+      options: {
+        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL?.replace('.supabase.co', '') || 'http://localhost:3000'}/`,
+      },
+    })
+
+    if (linkError || !linkData) {
+      throw linkError || new Error('Failed to generate impersonation link')
+    }
+
+    // Extract the token_hash from the link
+    const linkUrl = new URL(linkData.properties.action_link)
+    const tokenHash = linkUrl.searchParams.get('token_hash') || linkUrl.hash.match(/token_hash=([^&]+)/)?.[1]
+
+    if (!tokenHash) {
+      throw new Error('Failed to extract token_hash from generated link')
+    }
+
+    // Exchange the token for a session using the regular client
     const cookieStore = await cookies()
     const response = NextResponse.json({ 
       data: { 
         success: true, 
-        userId: session.user.id,
-        email: session.user.email,
+        userId: targetUser.id,
+        email: targetUser.email,
       }, 
       error: null 
     })
 
-    // Create a server client to properly handle cookie setting
+    // Create server client with response cookie handling
     const serverClient = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -85,7 +110,17 @@ export async function POST(request: NextRequest) {
       }
     )
 
-    // Set the session using the server client
+    // Verify the token and get the session
+    const { data: { session }, error: sessionError } = await serverClient.auth.verifyOtp({
+      token_hash: tokenHash,
+      type: 'magiclink',
+    })
+
+    if (sessionError || !session) {
+      throw sessionError || new Error('Failed to create session from magic link')
+    }
+
+    // Set the session to update cookies
     await serverClient.auth.setSession({
       access_token: session.access_token,
       refresh_token: session.refresh_token,
