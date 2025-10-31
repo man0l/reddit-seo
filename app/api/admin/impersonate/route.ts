@@ -75,13 +75,12 @@ export async function POST(request: NextRequest) {
     // Extract the token_hash from the link
     // First check if hashed_token is directly in properties (most reliable)
     let tokenHash: string | null = 
-      linkData.properties?.hashed_token || 
-      linkData.hashed_token || 
+      (linkData.properties as any)?.hashed_token || 
       null
 
     // If not found, extract from action_link URL
     if (!tokenHash) {
-      const actionLink = linkData.properties?.action_link || linkData.properties?.actionLink || linkData.action_link
+      const actionLink = linkData.properties?.action_link || (linkData.properties as any)?.actionLink
       
       if (!actionLink) {
         console.error('No action_link or hashed_token in linkData:', JSON.stringify(linkData, null, 2))
