@@ -90,7 +90,7 @@ export async function DELETE(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json()
-    const { id, name, description } = body
+    const { id, name, description, prompt_template, subreddit_exclusions } = body
 
     if (!id) {
       return NextResponse.json(
@@ -102,6 +102,15 @@ export async function PATCH(request: NextRequest) {
     const updateData: any = {}
     if (name !== undefined) updateData.name = name.trim()
     if (description !== undefined) updateData.description = description?.trim() || null
+    if (prompt_template !== undefined) updateData.prompt_template = prompt_template
+    if (subreddit_exclusions !== undefined) {
+      // Normalize exclusions: lowercase, remove 'r/' prefix, filter empty
+      updateData.subreddit_exclusions = Array.isArray(subreddit_exclusions)
+        ? subreddit_exclusions
+            .map((s: string) => s.trim().toLowerCase().replace(/^r\//, ''))
+            .filter((s: string) => s.length > 0)
+        : []
+    }
 
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json(

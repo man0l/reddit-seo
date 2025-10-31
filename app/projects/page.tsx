@@ -15,6 +15,13 @@ export default function ProjectsPage() {
   const [projectDescription, setProjectDescription] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null)
+  const [editingTemplate, setEditingTemplate] = useState<string | null>(null)
+  const [templateContent, setTemplateContent] = useState('')
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false)
+  const [editingExclusions, setEditingExclusions] = useState<string | null>(null)
+  const [exclusionList, setExclusionList] = useState<string[]>([])
+  const [newExclusion, setNewExclusion] = useState('')
+  const [isSavingExclusions, setIsSavingExclusions] = useState(false)
 
   const fetchProjects = async () => {
     setIsLoading(true)
@@ -102,6 +109,94 @@ export default function ProjectsPage() {
       alert(err instanceof Error ? err.message : 'Failed to delete project')
     } finally {
       setDeletingId(null)
+    }
+  }
+
+  const handleEditTemplate = (project: Project) => {
+    setEditingTemplate(project.id)
+    setTemplateContent(project.prompt_template || '')
+  }
+
+  const handleSaveTemplate = async (projectId: string) => {
+    setIsSavingTemplate(true)
+    setError(null)
+
+    try {
+      const response = await fetch('/api/projects', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: projectId,
+          prompt_template: templateContent,
+        }),
+      })
+
+      const { error: apiError } = await response.json()
+
+      if (!response.ok || apiError) {
+        throw new Error(apiError || 'Failed to save template')
+      }
+
+      setEditingTemplate(null)
+      setTemplateContent('')
+      await fetchProjects()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save template')
+    } finally {
+      setIsSavingTemplate(false)
+    }
+  }
+
+  const handleEditExclusions = (project: Project) => {
+    setEditingExclusions(project.id)
+    setExclusionList(project.subreddit_exclusions || [])
+    setNewExclusion('')
+  }
+
+  const handleAddExclusion = () => {
+    const subreddit = newExclusion.trim().toLowerCase().replace(/^r\//, '')
+    if (subreddit && !exclusionList.includes(subreddit)) {
+      setExclusionList([...exclusionList, subreddit])
+      setNewExclusion('')
+    }
+  }
+
+  const handleRemoveExclusion = (subreddit: string) => {
+    setExclusionList(exclusionList.filter(s => s !== subreddit))
+  }
+
+  const handleSaveExclusions = async (projectId: string) => {
+    setIsSavingExclusions(true)
+    setError(null)
+
+    try {
+      const response = await fetch('/api/projects', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: projectId,
+          subreddit_exclusions: exclusionList,
+        }),
+      })
+
+      const { error: apiError } = await response.json()
+
+      if (!response.ok || apiError) {
+        throw new Error(apiError || 'Failed to save exclusions')
+      }
+
+      setEditingExclusions(null)
+      setExclusionList([])
+      setNewExclusion('')
+      await fetchProjects()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save exclusions')
+    } finally {
+      setIsSavingExclusions(false)
     }
   }
 
@@ -256,7 +351,7 @@ export default function ProjectsPage() {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="space-y-6">
             {projects.map((project) => (
               <div key={project.id} className="card p-6 hover:shadow-lg transition-all">
                 <div className="flex items-start justify-between mb-4">
@@ -266,24 +361,210 @@ export default function ProjectsPage() {
                       <p className="text-sm text-slate-600 line-clamp-2">{project.description}</p>
                     )}
                   </div>
-                  <button
-                    onClick={() => handleDelete(project.id)}
-                    disabled={deletingId === project.id}
-                    className="ml-4 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg p-2 transition-all disabled:opacity-50"
-                    title="Delete project"
-                  >
-                    {deletingId === project.id ? (
-                      <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                    ) : (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleEditTemplate(project)}
+                      className="text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg p-2 transition-all"
+                      title="Edit prompt template"
+                    >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                       </svg>
-                    )}
-                  </button>
+                    </button>
+                    <button
+                      onClick={() => handleDelete(project.id)}
+                      disabled={deletingId === project.id}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg p-2 transition-all disabled:opacity-50"
+                      title="Delete project"
+                    >
+                      {deletingId === project.id ? (
+                        <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      ) : (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
                 </div>
+
+                {/* Prompt Template Editor */}
+                {editingTemplate === project.id ? (
+                  <div className="mt-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
+                    <div className="flex items-center justify-between mb-3">
+                      <label className="block text-sm font-semibold text-slate-700">
+                        Prompt Template
+                        <span className="text-xs text-slate-500 ml-2 font-normal">(Use {`{{variableName}}`} for variables)</span>
+                      </label>
+                      <div className="text-xs text-slate-500 font-mono">
+                        Available: {`{{tone}}`}, {`{{businessDescription}}`}, {`{{postUrl}}`}, {`{{postText}}`}, {`{{commentsText}}`}, {`{{subreddit}}`}, {`{{postTitle}}`}
+                      </div>
+                    </div>
+                    <textarea
+                      value={templateContent}
+                      onChange={(e) => setTemplateContent(e.target.value)}
+                      rows={12}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-mono text-sm resize-none"
+                      placeholder="Enter your prompt template with {{variables}}..."
+                    />
+                    {error && editingTemplate === project.id && (
+                      <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+                        <p className="text-xs text-red-600">{error}</p>
+                      </div>
+                    )}
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        onClick={() => handleSaveTemplate(project.id)}
+                        disabled={isSavingTemplate}
+                        className="px-4 py-2 text-sm bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all shadow-md shadow-indigo-500/30 hover:shadow-lg hover:shadow-indigo-500/40 disabled:opacity-50 font-semibold"
+                      >
+                        {isSavingTemplate ? 'Saving...' : 'Save Template'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingTemplate(null)
+                          setTemplateContent('')
+                          setError(null)
+                        }}
+                        className="px-4 py-2 text-sm border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 transition-all font-semibold"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold text-slate-700">Prompt Template</span>
+                      <button
+                        onClick={() => handleEditTemplate(project)}
+                        className="text-xs text-indigo-600 hover:text-indigo-700 font-semibold"
+                      >
+                        {project.prompt_template ? 'Edit' : 'Add Template'}
+                      </button>
+                    </div>
+                    {project.prompt_template ? (
+                      <pre className="text-xs text-slate-600 whitespace-pre-wrap line-clamp-3 font-mono">
+                        {project.prompt_template}
+                      </pre>
+                    ) : (
+                      <p className="text-xs text-slate-500 italic">No custom template set. Using default.</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Subreddit Exclusions Editor */}
+                {editingExclusions === project.id ? (
+                  <div className="mt-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
+                    <label className="block text-sm font-semibold text-slate-700 mb-3">
+                      Subreddit Exclusion List
+                      <span className="text-xs text-slate-500 ml-2 font-normal">(Posts from these subreddits will show a warning)</span>
+                    </label>
+                    <div className="space-y-3">
+                      {/* Add new exclusion */}
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={newExclusion}
+                          onChange={(e) => setNewExclusion(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              handleAddExclusion()
+                            }
+                          }}
+                          placeholder="e.g., spam or r/spam"
+                          className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all text-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddExclusion}
+                          disabled={!newExclusion.trim()}
+                          className="px-4 py-2 text-sm bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all shadow-md shadow-indigo-500/30 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                        >
+                          Add
+                        </button>
+                      </div>
+                      {/* Exclusion list */}
+                      {exclusionList.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {exclusionList.map((subreddit) => (
+                            <span
+                              key={subreddit}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-700"
+                            >
+                              <span className="font-medium">r/{subreddit}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveExclusion(subreddit)}
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50 rounded p-0.5 transition-all"
+                                title="Remove"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-500 italic">No exclusions. Add subreddits to exclude.</p>
+                      )}
+                    </div>
+                    {error && editingExclusions === project.id && (
+                      <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+                        <p className="text-xs text-red-600">{error}</p>
+                      </div>
+                    )}
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        onClick={() => handleSaveExclusions(project.id)}
+                        disabled={isSavingExclusions}
+                        className="px-4 py-2 text-sm bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all shadow-md shadow-indigo-500/30 hover:shadow-lg hover:shadow-indigo-500/40 disabled:opacity-50 font-semibold"
+                      >
+                        {isSavingExclusions ? 'Saving...' : 'Save Exclusions'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingExclusions(null)
+                          setExclusionList([])
+                          setNewExclusion('')
+                          setError(null)
+                        }}
+                        className="px-4 py-2 text-sm border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 transition-all font-semibold"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold text-slate-700">Subreddit Exclusions</span>
+                      <button
+                        onClick={() => handleEditExclusions(project)}
+                        className="text-xs text-indigo-600 hover:text-indigo-700 font-semibold"
+                      >
+                        Manage
+                      </button>
+                    </div>
+                    {project.subreddit_exclusions && project.subreddit_exclusions.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {project.subreddit_exclusions.map((subreddit) => (
+                          <span key={subreddit} className="inline-flex items-center px-2 py-1 bg-white border border-slate-300 rounded text-xs text-slate-700 font-medium">
+                            r/{subreddit}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-500 italic">No exclusions set.</p>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-200">
                   <span className="text-xs text-slate-500">
                     Created {new Date(project.created_at).toLocaleDateString()}

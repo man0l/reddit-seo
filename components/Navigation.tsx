@@ -10,6 +10,12 @@ export default function Navigation() {
           </Link>
           <div className="flex items-center gap-6">
             <Link
+              href="/"
+              className="text-slate-600 hover:text-indigo-600 transition-colors font-semibold px-4 py-2 rounded-xl hover:bg-gradient-to-r hover:from-indigo-50 hover:to-purple-50"
+            >
+              Dashboard
+            </Link>
+            <Link
               href="/projects"
               className="text-slate-600 hover:text-indigo-600 transition-colors font-semibold px-4 py-2 rounded-xl hover:bg-gradient-to-r hover:from-indigo-50 hover:to-purple-50"
             >

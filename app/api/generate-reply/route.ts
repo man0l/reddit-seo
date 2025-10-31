@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { ReplyStyle, REPLY_STYLES } from '@/lib/types'
+import { replaceTemplateVariables, buildTemplateVariables } from '@/lib/template'
 
 interface ApifyScrapedItem {
   title?: string
@@ -53,37 +55,28 @@ async function scrapeReddit(postUrl: string, includeComments: boolean) {
   return { data: item as ApifyScrapedItem, error: null }
 }
 
-function buildPrompt(params: {
-  postUrl: string
-  businessDescription: string
-  style: 'casual' | 'laconic'
-  scraped?: ApifyScrapedItem | null
-}) {
-  const { postUrl, businessDescription, style, scraped } = params
-  const tone = style === 'laconic' ? 'Be short, minimal, helpful, and direct.' : 'Be friendly, natural, and conversational.'
-  const postText = scraped?.text || scraped?.content || ''
-  const commentsText = Array.isArray(scraped?.comments)
-    ? scraped!.comments!.map((c) => c.text || '').filter(Boolean).slice(0, 15).join('\n- ')
-    : ''
+async function getProjectTemplate(postUrl: string): Promise<string | null> {
+  // Get project_id through keyword -> reddit_post relationship
+  const { data: postData } = await supabase
+    .from('reddit_posts')
+    .select('keyword_id, keywords!inner(project_id)')
+    .eq('post_url', postUrl)
+    .single()
 
-  const commentsSection = commentsText
-    ? `\nThese are some recent comments from the thread. Use them to tailor the reply (do not quote verbatim, paraphrase where needed):\n- ${commentsText}`
-    : ''
+  if (!postData || !(postData as any).keywords) {
+    return null
+  }
 
-  return [
-    `You are writing a single Reddit comment as a brand representative. ${tone}`,
-    `Business description: ${businessDescription}`,
-    `Thread URL: ${postUrl}`,
-    postText ? `Original post context: ${postText}` : '',
-    commentsSection,
-    `Requirements:
-- Avoid sounding salesy. Offer genuine help.
-- Include concrete, actionable tips.
-- If suggesting your product/service, disclose affiliation transparently in one short line.
-- Keep formatting Reddit-friendly (short paragraphs, bullet points if useful).
-- Never include tracking links. No emojis. No hashtags.`,
-    'Return only the comment text.'
-  ].filter(Boolean).join('\n\n')
+  const projectId = (postData as any).keywords.project_id
+
+  // Get project template
+  const { data: projectData } = await supabase
+    .from('projects')
+    .select('prompt_template')
+    .eq('id', projectId)
+    .single()
+
+  return projectData?.prompt_template || null
 }
 
 export async function POST(req: NextRequest) {
@@ -92,13 +85,51 @@ export async function POST(req: NextRequest) {
     const { postUrl, businessDescription, style = 'casual', includeComments = false } = body as {
       postUrl: string
       businessDescription: string
-      style?: 'casual' | 'laconic'
+      style?: ReplyStyle
       includeComments?: boolean
     }
+
+    // Validate style
+    if (style && !REPLY_STYLES[style as ReplyStyle]) {
+      return NextResponse.json({ data: null, error: `Invalid style. Must be one of: ${Object.keys(REPLY_STYLES).join(', ')}` }, { status: 400 })
+    }
+    
+    const validatedStyle = (style || 'casual') as ReplyStyle
+    const styleConfig = REPLY_STYLES[validatedStyle]
 
     if (!postUrl || !businessDescription) {
       return NextResponse.json({ data: null, error: 'postUrl and businessDescription are required' }, { status: 400 })
     }
+
+    // Get project template
+    const projectTemplate = await getProjectTemplate(postUrl)
+    
+    // Fallback to default template if no project template exists
+    const defaultTemplate = `You are writing a single Reddit comment as a customer used of a business service. Use this tone: {{tone}}
+
+Business description: {{businessDescription}}
+
+Thread URL: {{postUrl}}
+
+{{postText}}
+
+{{commentsText}}
+
+Requirements:
+- Avoid sounding salesy. Offer genuine help.
+- Include concrete, actionable tips.
+- If suggesting your product/service, disclose affiliation transparently in one short line.
+- Keep formatting Reddit-friendly (short paragraphs, bullet points if useful).
+- Never include tracking links. No emojis. No hashtags.
+- Never mention an affiliation with the business in the reply.
+- Never add call to action
+- Never mention free. Paraphrase the word free.
+- Don't use markdown.
+- Mention the business name not in the beggining of the reply. Prefrrably somewere naturally inside, otherwise at the end.
+
+Return only the comment text.`
+
+    const template = projectTemplate || defaultTemplate
 
     // First, try to get stored post data from database
     let scraped: ApifyScrapedItem | null = null
@@ -137,7 +168,21 @@ export async function POST(req: NextRequest) {
       if (!error) scraped = data
     }
 
-    const prompt = buildPrompt({ postUrl, businessDescription, style, scraped })
+    // Build template variables
+    const variables = buildTemplateVariables({
+      businessDescription,
+      style: validatedStyle,
+      postUrl,
+      scraped: scraped ? {
+        text: scraped.text,
+        content: scraped.content,
+        comments: scraped.comments,
+        title: scraped.title,
+      } : null,
+    })
+
+    // Replace variables in template
+    const prompt = replaceTemplateVariables(template, variables)
 
     const openaiKey = process.env.OPENAI_API_KEY
     if (!openaiKey) {
@@ -151,13 +196,13 @@ export async function POST(req: NextRequest) {
         Authorization: `Bearer ${openaiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-mini',
         messages: [
           { role: 'system', content: 'You are an expert Reddit community marketer.' },
           { role: 'user', content: prompt },
         ],
-        temperature: style === 'laconic' ? 0.5 : 0.8,
-        max_tokens: 400,
+        //temperature: styleConfig.temperature,
+        //max_tokens: styleConfig.maxTokens,
       }),
     })
 
