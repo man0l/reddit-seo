@@ -240,6 +240,8 @@ export async function saveRankingsToDatabase(keywordId: string, keywordText: str
       } else {
         console.warn(`⚠ Failed to scrape Reddit post (or no data returned): ${post.post_url}`)
       }
+      // Add delay between Apify calls to avoid rate limiting and parallel execution issues
+      await new Promise(resolve => setTimeout(resolve, 1500)) // 1.5 second delay
     }
 
     if (existingPost) {

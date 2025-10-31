@@ -138,10 +138,16 @@ export async function POST(request: NextRequest) {
 
           if (insertError) throw insertError
 
-          // Auto-check rankings for newly added keywords (in background)
-          insertedData?.forEach((kw) => {
-            checkRankingsForKeyword(kw.id, kw.keyword, supabase).catch(console.error)
-          })
+          // Auto-check rankings for newly added keywords (sequentially to avoid parallel Apify calls)
+          if (insertedData && insertedData.length > 0) {
+            for (const kw of insertedData) {
+              try {
+                await checkRankingsForKeyword(kw.id, kw.keyword, supabase)
+              } catch (error) {
+                console.error(`Error checking rankings for keyword ${kw.keyword}:`, error)
+              }
+            }
+          }
 
           return NextResponse.json({
             data: insertedData,
@@ -153,10 +159,16 @@ export async function POST(request: NextRequest) {
         throw error
       }
 
-      // Auto-check rankings for newly added keywords (in background)
-      data?.forEach((kw) => {
-        checkRankingsForKeyword(kw.id, kw.keyword, supabase).catch(console.error)
-      })
+      // Auto-check rankings for newly added keywords (sequentially to avoid parallel Apify calls)
+      if (data && data.length > 0) {
+        for (const kw of data) {
+          try {
+            await checkRankingsForKeyword(kw.id, kw.keyword, supabase)
+          } catch (error) {
+            console.error(`Error checking rankings for keyword ${kw.keyword}:`, error)
+          }
+        }
+      }
 
       return NextResponse.json({
         data,
@@ -200,9 +212,13 @@ export async function POST(request: NextRequest) {
       throw error
     }
 
-    // Auto-check rankings for newly added keyword (in background)
+    // Auto-check rankings for newly added keyword (sequential processing)
     if (data) {
-      checkRankingsForKeyword(data.id, data.keyword, supabase).catch(console.error)
+      try {
+        await checkRankingsForKeyword(data.id, data.keyword, supabase)
+      } catch (error) {
+        console.error(`Error checking rankings for keyword ${data.keyword}:`, error)
+      }
     }
 
     return NextResponse.json({ data, error: null }, { status: 201 })
