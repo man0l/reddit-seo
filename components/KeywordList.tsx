@@ -30,6 +30,7 @@ export default function KeywordList({ projectId, onKeywordClick }: KeywordListPr
   const [confirmBulkDelete, setConfirmBulkDelete] = useState<number | null>(null)
   const [confirmSingleDelete, setConfirmSingleDelete] = useState<string | null>(null)
   const [generateUrl, setGenerateUrl] = useState<string | null>(null)
+  const [postsWithDrafts, setPostsWithDrafts] = useState<Set<string>>(new Set())
 
   const fetchKeywords = async () => {
     setIsLoading(true)
@@ -68,6 +69,31 @@ export default function KeywordList({ projectId, onKeywordClick }: KeywordListPr
         .filter(k => k.posts && k.posts.length > 0)
         .map(k => k.id)
       setExpandedKeywords(new Set(keywordsWithPostsIds))
+      
+      // Check which posts have drafts
+      const allPostUrls = keywordsWithPosts
+        .flatMap(k => k.posts || [])
+        .map(p => p.post_url)
+      
+      if (allPostUrls.length > 0) {
+        // Batch check drafts for all posts
+        const draftChecks = await Promise.all(
+          allPostUrls.map(async (postUrl) => {
+            try {
+              const response = await fetch(`/api/reply-drafts?postUrl=${encodeURIComponent(postUrl)}`)
+              const { data, error } = await response.json()
+              return { postUrl, hasDraft: !error && data?.draft_content && data.draft_content.length > 0 }
+            } catch {
+              return { postUrl, hasDraft: false }
+            }
+          })
+        )
+        
+        const draftsSet = new Set(
+          draftChecks.filter(check => check.hasDraft).map(check => check.postUrl)
+        )
+        setPostsWithDrafts(draftsSet)
+      }
       
       // Clean up selected IDs for keywords that no longer exist
       setSelectedIds(prev => {
@@ -422,6 +448,14 @@ export default function KeywordList({ projectId, onKeywordClick }: KeywordListPr
                                 <span className="text-xs text-gray-500">
                                   {new Date(post.last_checked_at).toLocaleDateString()}
                                 </span>
+                                {postsWithDrafts.has(post.post_url) && (
+                                  <span className="text-xs text-amber-600 flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200" title="Draft saved">
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    Draft
+                                  </span>
+                                )}
                                 {(post as any).apify_scraped_data && (() => {
                                   const apifyData = (post as any).apify_scraped_data
                                   const upvotes = apifyData?.upVotes || apifyData?.score || apifyData?.upvotes || apifyData?.upvoteCount || null
@@ -529,7 +563,31 @@ export default function KeywordList({ projectId, onKeywordClick }: KeywordListPr
         onCancel={() => setConfirmSingleDelete(null)}
       />
 
-      <GenerateReplyModal isOpen={!!generateUrl} postUrl={generateUrl} onClose={() => setGenerateUrl(null)} />
+      <GenerateReplyModal 
+        isOpen={!!generateUrl} 
+        postUrl={generateUrl} 
+        onClose={() => {
+          setGenerateUrl(null)
+          // Refresh draft status when modal closes
+          if (generateUrl) {
+            fetch(`/api/reply-drafts?postUrl=${encodeURIComponent(generateUrl)}`)
+              .then(res => res.json())
+              .then(({ data, error }) => {
+                const hasDraft = !error && data?.draft_content && data.draft_content.length > 0
+                setPostsWithDrafts(prev => {
+                  const next = new Set(prev)
+                  if (hasDraft) {
+                    next.add(generateUrl)
+                  } else {
+                    next.delete(generateUrl)
+                  }
+                  return next
+                })
+              })
+              .catch(() => {})
+          }
+        }} 
+      />
     </div>
   )
 }

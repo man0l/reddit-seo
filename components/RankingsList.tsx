@@ -14,6 +14,7 @@ export default function RankingsList({ keyword }: RankingsListProps) {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [generateUrl, setGenerateUrl] = useState<string | null>(null)
+  const [postsWithDrafts, setPostsWithDrafts] = useState<Set<string>>(new Set())
 
   const fetchRankings = async () => {
     setIsLoading(true)
@@ -26,7 +27,28 @@ export default function RankingsList({ keyword }: RankingsListProps) {
         throw new Error(apiError || 'Failed to fetch rankings')
       }
 
-      setPosts(data || [])
+      const postsData = data || []
+      setPosts(postsData)
+      
+      // Check which posts have drafts
+      if (postsData.length > 0) {
+        const draftChecks = await Promise.all(
+          postsData.map(async (post: RedditPost) => {
+            try {
+              const response = await fetch(`/api/reply-drafts?postUrl=${encodeURIComponent(post.post_url)}`)
+              const { data: draftData, error: draftError } = await response.json()
+              return { postUrl: post.post_url, hasDraft: !draftError && draftData?.draft_content && draftData.draft_content.length > 0 }
+            } catch {
+              return { postUrl: post.post_url, hasDraft: false }
+            }
+          })
+        )
+        
+        const draftsSet = new Set(
+          draftChecks.filter(check => check.hasDraft).map(check => check.postUrl)
+        )
+        setPostsWithDrafts(draftsSet)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {
@@ -49,7 +71,28 @@ export default function RankingsList({ keyword }: RankingsListProps) {
         throw new Error(apiError || 'Failed to refresh rankings')
       }
 
-      setPosts(data || [])
+      const postsData = data || []
+      setPosts(postsData)
+      
+      // Check which posts have drafts after refresh
+      if (postsData.length > 0) {
+        const draftChecks = await Promise.all(
+          postsData.map(async (post: RedditPost) => {
+            try {
+              const response = await fetch(`/api/reply-drafts?postUrl=${encodeURIComponent(post.post_url)}`)
+              const { data: draftData, error: draftError } = await response.json()
+              return { postUrl: post.post_url, hasDraft: !draftError && draftData?.draft_content && draftData.draft_content.length > 0 }
+            } catch {
+              return { postUrl: post.post_url, hasDraft: false }
+            }
+          })
+        )
+        
+        const draftsSet = new Set(
+          draftChecks.filter(check => check.hasDraft).map(check => check.postUrl)
+        )
+        setPostsWithDrafts(draftsSet)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to refresh rankings')
     } finally {
@@ -160,6 +203,14 @@ export default function RankingsList({ keyword }: RankingsListProps) {
                   <span className="text-xs text-gray-500">
                     Last checked {new Date(post.last_checked_at).toLocaleDateString()}
                   </span>
+                  {postsWithDrafts.has(post.post_url) && (
+                    <span className="text-xs text-amber-600 flex items-center gap-1 px-2 py-1 rounded-full bg-amber-50 border border-amber-200" title="Draft saved">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Draft
+                    </span>
+                  )}
                   {(post as any).apify_scraped_data && (() => {
                     const apifyData = (post as any).apify_scraped_data
                     const upvotes = apifyData?.upVotes || apifyData?.score || apifyData?.upvotes || apifyData?.upvoteCount || null
@@ -220,7 +271,32 @@ export default function RankingsList({ keyword }: RankingsListProps) {
         ))}
       </div>
 
-      <GenerateReplyModal isOpen={!!generateUrl} postUrl={generateUrl} onClose={() => setGenerateUrl(null)} />
+      <GenerateReplyModal 
+        isOpen={!!generateUrl} 
+        postUrl={generateUrl} 
+        onClose={() => {
+          const currentUrl = generateUrl
+          setGenerateUrl(null)
+          // Refresh draft status when modal closes
+          if (currentUrl) {
+            fetch(`/api/reply-drafts?postUrl=${encodeURIComponent(currentUrl)}`)
+              .then(res => res.json())
+              .then(({ data, error }) => {
+                const hasDraft = !error && data?.draft_content && data.draft_content.length > 0
+                setPostsWithDrafts(prev => {
+                  const next = new Set(prev)
+                  if (hasDraft) {
+                    next.add(currentUrl)
+                  } else {
+                    next.delete(currentUrl)
+                  }
+                  return next
+                })
+              })
+              .catch(() => {})
+          }
+        }} 
+      />
     </div>
   )
 }
