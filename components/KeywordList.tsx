@@ -334,6 +334,86 @@ export default function KeywordList({ projectId, onKeywordClick }: KeywordListPr
     }
   }
 
+  const handleBulkExport = async () => {
+    if (selectedPostUrls.size === 0) return
+
+    try {
+      const postUrlsArray = Array.from(selectedPostUrls)
+      
+      // Fetch drafts for all selected posts
+      const draftPromises = postUrlsArray.map(async (postUrl) => {
+        try {
+          const response = await fetch(`/api/reply-drafts?postUrl=${encodeURIComponent(postUrl)}`)
+          const { data, error } = await response.json()
+          
+          if (error || !data?.draft_content) {
+            return {
+              postUrl,
+              commentContent: '',
+              note: ''
+            }
+          }
+          
+          return {
+            postUrl,
+            commentContent: data.draft_content || '',
+            note: ''
+          }
+        } catch {
+          return {
+            postUrl,
+            commentContent: '',
+            note: ''
+          }
+        }
+      })
+
+      const exportData = await Promise.all(draftPromises)
+
+      // Create CSV content
+      const csvHeaders = ['Post link', 'Comment Content', 'Note']
+      const csvRows = exportData.map(row => {
+        // Escape CSV special characters (quotes, newlines, commas)
+        const escapeCSV = (str: string) => {
+          if (str.includes('"') || str.includes(',') || str.includes('\n') || str.includes('\r')) {
+            return `"${str.replace(/"/g, '""')}"`
+          }
+          return str
+        }
+        
+        return [
+          escapeCSV(row.postUrl),
+          escapeCSV(row.commentContent),
+          escapeCSV(row.note)
+        ].join(',')
+      })
+
+      const csvContent = [csvHeaders.join(','), ...csvRows].join('\n')
+      
+      // Create blob and download
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const link = document.createElement('a')
+      const url = URL.createObjectURL(blob)
+      
+      link.setAttribute('href', url)
+      link.setAttribute('download', `reddit-posts-export-${new Date().toISOString().split('T')[0]}.csv`)
+      link.style.visibility = 'hidden'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      
+      setToast({
+        message: `Exported ${exportData.length} post${exportData.length !== 1 ? 's' : ''} to CSV`,
+        type: 'success'
+      })
+    } catch (err) {
+      setToast({
+        message: err instanceof Error ? err.message : 'Failed to export posts',
+        type: 'error'
+      })
+    }
+  }
+
   const handleBulkGenerate = async (businessDescription: string, style: string, includeComments: boolean) => {
     if (selectedPostUrls.size === 0) return
 
@@ -448,6 +528,16 @@ export default function KeywordList({ projectId, onKeywordClick }: KeywordListPr
                     Generate AI Reply ({selectedPostsCount})
                   </>
                 )}
+              </button>
+              <button
+                onClick={handleBulkExport}
+                disabled={isBulkGenerating}
+                className="px-4 py-2 text-sm bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl hover:from-emerald-700 hover:to-teal-700 transition-all shadow-md shadow-emerald-500/30 hover:shadow-lg hover:shadow-emerald-500/40 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-semibold"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Export CSV
               </button>
             </div>
           )}
