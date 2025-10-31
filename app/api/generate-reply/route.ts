@@ -57,22 +57,25 @@ async function scrapeReddit(postUrl: string, includeComments: boolean) {
 
 async function getProjectTemplate(postUrl: string, supabase: any): Promise<string | null> {
   try {
-    // Step 1: Get the post and its keyword_id
-    const { data: postData, error: postError } = await supabase
+    // Step 1: Get the post and its keyword_id (may be multiple posts with same URL, so get first one)
+    const { data: postsData, error: postError } = await supabase
       .from('reddit_posts')
       .select('keyword_id')
       .eq('post_url', postUrl)
-      .single()
+      .limit(1)
 
     if (postError) {
       console.error('Error fetching post data:', postError)
       return null
     }
 
-    if (!postData || !postData.keyword_id) {
+    if (!postsData || postsData.length === 0 || !postsData[0]?.keyword_id) {
       console.warn('No post data or keyword_id found for postUrl:', postUrl)
       return null
     }
+
+    const postData = postsData[0]
+    console.log('Found post with keyword_id:', postData.keyword_id)
 
     // Step 2: Get the keyword and its project_id
     const { data: keywordData, error: keywordError } = await supabase
@@ -82,7 +85,7 @@ async function getProjectTemplate(postUrl: string, supabase: any): Promise<strin
       .single()
 
     if (keywordError) {
-      console.error('Error fetching keyword data:', keywordError)
+      console.error('Error fetching keyword data:', keywordError, 'keyword_id:', postData.keyword_id)
       return null
     }
 
@@ -90,6 +93,8 @@ async function getProjectTemplate(postUrl: string, supabase: any): Promise<strin
       console.warn('No keyword data or project_id found for keyword_id:', postData.keyword_id)
       return null
     }
+
+    console.log('Found keyword with project_id:', keywordData.project_id)
 
     // Step 3: Get the project template
     const { data: projectData, error: projectError } = await supabase
@@ -99,17 +104,17 @@ async function getProjectTemplate(postUrl: string, supabase: any): Promise<strin
       .single()
 
     if (projectError) {
-      console.error('Error fetching project template:', projectError)
+      console.error('Error fetching project template:', projectError, 'project_id:', keywordData.project_id)
       return null
     }
 
     const template = projectData?.prompt_template
-    if (!template) {
-      console.warn('No prompt_template found for project:', keywordData.project_id)
+    if (!template || template.trim() === '') {
+      console.warn('No prompt_template found or empty for project:', keywordData.project_id)
       return null
     }
 
-    console.log('Successfully loaded project template for postUrl:', postUrl)
+    console.log('Successfully loaded project template for postUrl:', postUrl, 'template length:', template.length)
     return template
   } catch (error) {
     console.error('Unexpected error in getProjectTemplate:', error)
@@ -188,12 +193,16 @@ Return only the comment text.`
     const template = projectTemplate || defaultTemplate
 
     // First, try to get stored post data from database
+    // Note: There may be multiple posts with the same URL (same post tracked for multiple keywords)
+    // We'll use the first one's scraped data
     let scraped: ApifyScrapedItem | null = null
-    const { data: dbPost } = await supabase
+    const { data: dbPosts } = await supabase
       .from('reddit_posts')
       .select('apify_scraped_data')
       .eq('post_url', postUrl)
-      .single()
+      .limit(1)
+    
+    const dbPost = dbPosts && dbPosts.length > 0 ? dbPosts[0] : null
 
     if (dbPost?.apify_scraped_data) {
       // Use stored data (includes post content like text/content)
