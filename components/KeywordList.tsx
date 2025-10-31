@@ -5,6 +5,7 @@ import { Keyword, RedditPost, REPLY_STYLES } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
 import ConfirmationModal from '@/components/ConfirmationModal'
 import GenerateReplyModal from '@/components/GenerateReplyModal'
+import Toast from '@/components/Toast'
 
 interface KeywordListProps {
   projectId: string
@@ -36,6 +37,7 @@ export default function KeywordList({ projectId, onKeywordClick }: KeywordListPr
   const [isBulkGenerating, setIsBulkGenerating] = useState(false)
   const [bulkGenerateProgress, setBulkGenerateProgress] = useState<{ current: number; total: number; currentUrl?: string } | null>(null)
   const [bulkBusinessDescription, setBulkBusinessDescription] = useState('')
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
 
   // Load business description when modal opens
   useEffect(() => {
@@ -151,8 +153,15 @@ export default function KeywordList({ projectId, onKeywordClick }: KeywordListPr
       if (data && data.length > 0) {
         setExpandedKeywords(prev => new Set(prev).add(keyword.id))
       }
+      setToast({
+        message: 'Rankings checked successfully',
+        type: 'success'
+      })
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to check rankings')
+      setToast({
+        message: err instanceof Error ? err.message : 'Failed to check rankings',
+        type: 'error'
+      })
     } finally {
       setCheckingRankings(prev => {
         const next = new Set(prev)
@@ -223,8 +232,15 @@ export default function KeywordList({ projectId, onKeywordClick }: KeywordListPr
 
       setSelectedIds(new Set())
       await fetchKeywords()
+      setToast({
+        message: `Deleted ${idsArray.length} keyword${idsArray.length !== 1 ? 's' : ''} successfully`,
+        type: 'success'
+      })
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete keywords')
+      setToast({
+        message: err instanceof Error ? err.message : 'Failed to delete keywords',
+        type: 'error'
+      })
     } finally {
       setIsBulkDeleting(false)
     }
@@ -252,8 +268,15 @@ export default function KeywordList({ projectId, onKeywordClick }: KeywordListPr
       }
 
       await fetchKeywords()
+      setToast({
+        message: 'Keyword deleted successfully',
+        type: 'success'
+      })
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete keyword')
+      setToast({
+        message: err instanceof Error ? err.message : 'Failed to delete keyword',
+        type: 'error'
+      })
     } finally {
       setDeletingId(null)
     }
@@ -354,9 +377,16 @@ export default function KeywordList({ projectId, onKeywordClick }: KeywordListPr
       // Clear selection
       setSelectedPostUrls(new Set())
 
-      alert(`Generated ${data.summary.success} replies (${data.summary.skipped} skipped, ${data.summary.errors} errors)`)
+      const summaryMessage = `Generated ${data.summary.success} replies${data.summary.skipped > 0 ? `, ${data.summary.skipped} skipped` : ''}${data.summary.errors > 0 ? `, ${data.summary.errors} errors` : ''}`
+      setToast({
+        message: summaryMessage,
+        type: data.summary.errors > 0 ? 'info' : 'success'
+      })
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to generate replies')
+      setToast({
+        message: err instanceof Error ? err.message : 'Failed to generate replies',
+        type: 'error'
+      })
     } finally {
       setIsBulkGenerating(false)
       setBulkGenerateProgress(null)
@@ -872,6 +902,14 @@ export default function KeywordList({ projectId, onKeywordClick }: KeywordListPr
               .catch(() => {})
           }
         }} 
+      />
+
+      {/* Toast Notification */}
+      <Toast
+        message={toast?.message || ''}
+        type={toast?.type || 'info'}
+        isVisible={!!toast}
+        onClose={() => setToast(null)}
       />
     </div>
   )
