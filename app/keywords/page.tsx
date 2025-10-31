@@ -9,6 +9,8 @@ import KeywordList from '@/components/KeywordList'
 import { Project } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
 
+export const dynamic = 'force-dynamic'
+
 export default function KeywordsPage() {
   const router = useRouter()
   const supabase = createClient()

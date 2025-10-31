@@ -7,6 +7,8 @@ import { Project } from '@/lib/types'
 import ConfirmationModal from '@/components/ConfirmationModal'
 import { createClient } from '@/lib/supabase/client'
 
+export const dynamic = 'force-dynamic'
+
 export default function ProjectsPage() {
   const router = useRouter()
   const supabase = createClient()

@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation'
 import { Keyword, RedditPost } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
 
+export const dynamic = 'force-dynamic'
+
 export default function Dashboard() {
   const router = useRouter()
   const supabase = createClient()
