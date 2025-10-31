@@ -7,7 +7,6 @@ import { createClient } from '@/lib/supabase/client'
 
 // Disable static optimization to avoid Suspense requirement for useSearchParams
 export const dynamic = 'force-dynamic'
-export const runtime = 'edge'
 
 function LoginInner() {
   const router = useRouter()
