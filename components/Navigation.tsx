@@ -69,6 +69,14 @@ export default function Navigation() {
                   Keywords
                 </Link>
                 <div className="flex items-center gap-3 pl-6 border-l border-slate-200">
+                  {user.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL && (
+                    <Link
+                      href="/admin"
+                      className="text-sm text-slate-600 hover:text-indigo-600 transition-colors font-semibold px-4 py-2 rounded-xl hover:bg-gradient-to-r hover:from-indigo-50 hover:to-purple-50"
+                    >
+                      Admin
+                    </Link>
+                  )}
                   <span className="text-sm text-slate-600">{user.email}</span>
                   <button
                     onClick={handleSignOut}
